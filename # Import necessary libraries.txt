@@ -1,0 +1,140 @@
+# Import necessary libraries
+import tensorflow as tf
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
+import matplotlib.pyplot as plt
+import numpy as np
+from tensorflow.keras.preprocessing import image
+import streamlit as st
+
+# Set up image data generators for loading and augmenting data
+train_datagen = ImageDataGenerator(
+    rescale=1./255,
+    shear_range=0.2,
+    zoom_range=0.2,
+    horizontal_flip=True,
+    validation_split=0.2
+)
+
+# Update the path to your dataset directory
+train_generator = train_datagen.flow_from_directory(
+    r"D:\MINIPROJECT1\datasetforskincancer",  # Replace with your dataset path
+    target_size=(150, 150),
+    batch_size=32,
+    class_mode='categorical',  # Change to 'categorical'
+    subset='training'
+)
+
+validation_generator = train_datagen.flow_from_directory(
+    r"D:\MINIPROJECT1\datasetforskincancer",  # Use the same directory for validation
+    target_size=(150, 150),
+    batch_size=32,
+    class_mode='categorical',  # Change to 'categorical'
+    subset='validation'
+)
+
+# Verify if images are loaded correctly
+st.write(f"Training samples: {train_generator.samples}")
+st.write(f"Validation samples: {validation_generator.samples}")
+
+# Get the number of classes
+num_classes = len(train_generator.class_indices)
+st.write(f"Number of classes: {num_classes}")
+
+# Build the CNN model
+model = Sequential([
+    Conv2D(32, (3, 3), activation='relu', input_shape=(150, 150, 3)),
+    MaxPooling2D(pool_size=(2, 2)),
+    Conv2D(64, (3, 3), activation='relu'),
+    MaxPooling2D(pool_size=(2, 2)),
+    Conv2D(128, (3, 3), activation='relu'),
+    MaxPooling2D(pool_size=(2, 2)),
+    Flatten(),
+    Dense(512, activation='relu'),
+    Dropout(0.5),
+    Dense(num_classes, activation='softmax')  # Change to softmax for multi-class classification
+])
+
+# Compile the model
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+# Set steps per epoch and validation steps
+steps_per_epoch = max(1, 22 // 8)
+validation_steps = max(1,20 // 8)
+
+st.write(f"Steps per epoch: {steps_per_epoch}")
+st.write(f"Validation steps: {validation_steps}")
+
+# Train the model
+history = model.fit(
+    train_generator,
+    steps_per_epoch=steps_per_epoch,
+    validation_data=validation_generator,
+    validation_steps=validation_steps,
+    epochs=10
+)
+
+# Plot training and validation accuracy and loss
+acc = history.history['accuracy']
+val_acc = history.history['val_accuracy']
+loss = history.history['loss']
+val_loss = history.history['val_loss']
+
+epochs_range = range(len(acc))
+
+plt.figure(figsize=(8, 8))
+plt.subplot(1, 2, 1)
+plt.plot(epochs_range, acc, label='Training Accuracy')
+plt.plot(epochs_range, val_acc, label='Validation Accuracy')
+plt.legend(loc='lower right')
+plt.title('Training and Validation Accuracy')
+
+plt.subplot(1, 2, 2)
+plt.plot(epochs_range, loss, label='Training Loss')
+plt.plot(epochs_range, val_loss, label='Validation Loss')
+plt.legend(loc='upper right')
+plt.title('Training and Validation Loss')
+
+# Save the model
+model.save('skin_cancer_model.h5')  # Change path if needed
+
+# Streamlit UI
+st.title('Skin Cancer Classification')
+st.write('Upload an image of a skin lesion to classify its type.')
+
+# Save and display plots in Streamlit
+st.pyplot(plt)
+
+# Function to predict an image
+def predict_image(img_path):
+    img = image.load_img(img_path, target_size=(150, 150))
+    img_array = image.img_to_array(img)
+    img_array = np.expand_dims(img_array, axis=0)
+    img_array /= 255.0
+
+    prediction = model.predict(img_array)
+    class_indices = train_generator.class_indices
+    class_names = list(class_indices.keys())
+    predicted_class = class_names[np.argmax(prediction)]
+
+    return predicted_class
+
+# Upload image
+uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+
+if uploaded_file is not None:
+    # Display the uploaded image
+    st.image(uploaded_file, caption='Uploaded Image', use_column_width=True)
+    st.write("")
+    st.write("Classifying...")
+
+    # Save the uploaded file temporarily
+    with open("temp.jpg", "wb") as f:
+        f.write(uploaded_file.getbuffer())  # Change path if needed
+
+    # Predict the image
+    predicted_class = predict_image("temp.jpg")  # Change path if needed
+
+    # Display the prediction
+    st.write(f"The lesion is predicted to be: {predicted_class}")
